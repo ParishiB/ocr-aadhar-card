@@ -1,56 +1,75 @@
 import cv2
 import pytesseract
-from PIL import Image
 import re
 
-# Path to the image
 image_path = '/Users/parishibhange/Desktop/WhatsApp.jpeg'
 
-# Step 1: Load the image
-img = cv2.imread(image_path)
+extracted_info = {
+    "name": '',
+    "aadhar_number": '',
+    "father_name": '',
+    "dob": '',
+    "image": ''
+}
 
+
+img = cv2.imread(image_path)
 if img is None:
     print(f"Error: Unable to load image at path '{image_path}'. Ensure the file exists.")
 else:
-    # Step 2: Preprocess the image
-    # Convert image to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Apply thresholding to clean the image
-    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Save the processed image (optional, for debugging)
-    cv2.imwrite('processed_image.jpg', thresh)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-    # Convert the image to a PIL Image object for Tesseract
-    pil_img = Image.fromarray(thresh)
+    faces = face_cascade.detectMultiScale(blurred, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
-    # Step 3: Extract text using Tesseract OCR
-    # Ensure Tesseract is installed and accessible via the system path
-    text = pytesseract.image_to_string(pil_img, lang='eng')
+    if len(faces) > 0:
+        x, y, w, h = faces[0]
 
-    # Step 4: Print the extracted text (optional, for debugging)
-    print("Extracted text: ", text)
+        person_image = img[y:y+h, x:x+w]
 
-    # Step 5: Extract specific information
-    # Regular expression for Aadhar number (12-digit format)
+        output_path = 'extracted_person_image.jpg'
+        extracted_info['image'] = output_path
+        cv2.imwrite(output_path, person_image)
+
+    else:
+        print("No faces detected in the image.")
+
+    text = pytesseract.image_to_string(img, lang='eng')
     aadhar_number = re.search(r'\d{4}\s?\d{4}\s?\d{4}', text)
 
     if aadhar_number:
-        print("Aadhar Number: ", aadhar_number.group())
+        extracted_info['aadhar_number'] = aadhar_number.group()
     else:
         print("Aadhar number not found.")
 
-    # Regular expression for Date of Birth (DOB)
+    name_match = re.search(r'([A-Za-z\s]+)\s*Father', text)
+    if name_match:
+        extracted_info['name'] = name_match.group(1).strip()
+    else:
+        print("Name not found.")
+
     dob_match = re.search(r'(DOB|D.O.B|Date of Birth|जन्म तिथि)[\s:]+(\d{2}/\d{2}/\d{4})', text)
     if dob_match:
-        print("Date of Birth (DOB):", dob_match.group(2))
+        extracted_info['dob'] =  dob_match.group(2)
     else:
         print("Date of Birth not found.")
 
-    # Regular expression for Father's Name
-    father_name_match = re.search(r'(Father\s?:|पिता\s?:)[\s]*([A-Za-z\s]+)', text)
+    father_name_match = None  
+    try:
+        father_name_match = re.search(r'Father(?:[\s:]+)([A-Za-z]+(?:\s[A-Za-z]+)+)', text)
+    except Exception as e:
+        print(f"Error during regex matching: {e}")
+
     if father_name_match:
-        print("Father's Name:", father_name_match.group(2).strip())
+        father_name = father_name_match.group(1).strip()
+
+        cleaned_father_name = re.sub(r'\s*aie\s*FAP\s*', '', father_name)
+        extracted_info['father_name'] = cleaned_father_name
     else:
         print("Father's Name not found.")
+
+print("the user info" , extracted_info)
+
